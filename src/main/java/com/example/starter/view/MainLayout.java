@@ -5,6 +5,8 @@ import com.example.starter.service.auth.UserService;
 import com.example.starter.view.admin.HostManagementView;
 import com.example.starter.view.admin.InventoryManagementView;
 import com.example.starter.view.admin.ProjectManagementView;
+import com.example.starter.view.admin.TaskManagementView;
+import com.example.starter.view.admin.TemplateManagementView;
 import com.vaadin.flow.component.HasElement;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
@@ -149,6 +151,8 @@ public class MainLayout extends VerticalLayout implements RouterLayout, AfterNav
         createMenuItem(menuLayout, "主机管理", VaadinIcon.DESKTOP, "hosts", false);
         createMenuItem(menuLayout, "清单管理", VaadinIcon.SERVER, "inventories", false);
         createMenuItem(menuLayout, "项目管理", VaadinIcon.FOLDER, "projects", false);
+        createMenuItem(menuLayout, "模板管理", VaadinIcon.CLIPBOARD_TEXT, "templates", false);
+        createMenuItem(menuLayout, "任务管理", VaadinIcon.CLOCK, "tasks", false);
 
         return menuLayout;
     }
@@ -200,6 +204,10 @@ public class MainLayout extends VerticalLayout implements RouterLayout, AfterNav
                     UI.getCurrent().navigate(InventoryManagementView.class);
                 } else if (navigationTarget.equals("projects")) {
                     UI.getCurrent().navigate(ProjectManagementView.class);
+                } else if (navigationTarget.equals("templates")) {
+                    UI.getCurrent().navigate(TemplateManagementView.class);
+                } else if (navigationTarget.equals("tasks")) {
+                    UI.getCurrent().navigate(TaskManagementView.class);
                 }
             });
         }
@@ -259,6 +267,10 @@ public class MainLayout extends VerticalLayout implements RouterLayout, AfterNav
             currentPage = new Span("清单管理");
         } else if (location.contains("projects")) {
             currentPage = new Span("项目管理");
+        } else if (location.contains("templates")) {
+            currentPage = new Span("模板管理");
+        } else if (location.contains("tasks")) {
+            currentPage = new Span("任务管理");
         } else if (location.contains("admin")) {
             currentPage = new Span("系统管理");
         } else {
