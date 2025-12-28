@@ -3,28 +3,42 @@ package com.example.starter.entity;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.*;
 
+/**
+ * Inventory变量实体
+ * 用于存储Inventory级别的变量
+ */
 @Entity
-@Table(name = "role_variables")
-public class RoleVariable extends PanacheEntityBase {
+@Table(name = "inventory_variables")
+public class InventoryVariable extends PanacheEntityBase {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     public Long id;
 
+    @Column(nullable = false)
     public String variableName;
 
+    @Column(length = 2000)
     public String variableValue;
 
     @ManyToOne
-    @JoinColumn(name = "role_id")
-    public Role role;
+    @JoinColumn(name = "inventory_id")
+    public Inventory inventory;
 
-    public RoleVariable() {
+    public InventoryVariable() {
     }
 
-    public RoleVariable(String variableName, String variableValue) {
+    public InventoryVariable(String variableName, String variableValue) {
         this.variableName = variableName;
         this.variableValue = variableValue;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getVariableName() {
@@ -43,11 +57,11 @@ public class RoleVariable extends PanacheEntityBase {
         this.variableValue = variableValue;
     }
 
-    public Long getId() {
-        return id;
+    public Inventory getInventory() {
+        return inventory;
     }
 
-    public void setId(Long id) {
-        this.id = id;
+    public void setInventory(Inventory inventory) {
+        this.inventory = inventory;
     }
 }

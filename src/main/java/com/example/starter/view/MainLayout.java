@@ -2,8 +2,9 @@ package com.example.starter.view;
 
 import com.example.starter.config.AppConfig;
 import com.example.starter.service.auth.UserService;
-import com.example.starter.view.admin.RoleManagementView;
-import com.example.starter.view.admin.ServerManagementView;
+import com.example.starter.view.admin.HostManagementView;
+import com.example.starter.view.admin.InventoryManagementView;
+import com.example.starter.view.admin.ProjectManagementView;
 import com.vaadin.flow.component.HasElement;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
@@ -145,8 +146,9 @@ public class MainLayout extends VerticalLayout implements RouterLayout, AfterNav
 
         // 菜单项
         createMenuItem(menuLayout, "资源预览", VaadinIcon.GRID, "", true);
-        createMenuItem(menuLayout, "主机管理", VaadinIcon.SERVER, "servers", false);
-        createMenuItem(menuLayout, "角色管理", VaadinIcon.USER, "roles", false);
+        createMenuItem(menuLayout, "主机管理", VaadinIcon.DESKTOP, "hosts", false);
+        createMenuItem(menuLayout, "清单管理", VaadinIcon.SERVER, "inventories", false);
+        createMenuItem(menuLayout, "项目管理", VaadinIcon.FOLDER, "projects", false);
 
         return menuLayout;
     }
@@ -192,10 +194,12 @@ public class MainLayout extends VerticalLayout implements RouterLayout, AfterNav
             });
         } else {
             itemLayout.addClickListener(e -> {
-                if (navigationTarget.equals("servers")) {
-                    UI.getCurrent().navigate(ServerManagementView.class);
-                } else if (navigationTarget.equals("roles")) {
-                    UI.getCurrent().navigate(RoleManagementView.class);
+                if (navigationTarget.equals("hosts")) {
+                    UI.getCurrent().navigate(HostManagementView.class);
+                } else if (navigationTarget.equals("inventories")) {
+                    UI.getCurrent().navigate(InventoryManagementView.class);
+                } else if (navigationTarget.equals("projects")) {
+                    UI.getCurrent().navigate(ProjectManagementView.class);
                 }
             });
         }
@@ -249,10 +253,12 @@ public class MainLayout extends VerticalLayout implements RouterLayout, AfterNav
 
         if (location == null || location.isEmpty() || location.equals("/")) {
             currentPage = new Span("资源预览");
-        } else if (location.contains("servers")) {
+        } else if (location.contains("hosts")) {
             currentPage = new Span("主机管理");
-        } else if (location.contains("roles")) {
-            currentPage = new Span("角色管理");
+        } else if (location.contains("inventories")) {
+            currentPage = new Span("清单管理");
+        } else if (location.contains("projects")) {
+            currentPage = new Span("项目管理");
         } else if (location.contains("admin")) {
             currentPage = new Span("系统管理");
         } else {
