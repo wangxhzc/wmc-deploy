@@ -1,6 +1,5 @@
 package com.example.starter.service.host;
 
-import com.example.starter.entity.Inventory;
 import com.example.starter.entity.InventoryHost;
 import com.example.starter.service.inventory.InventoryService;
 import io.quarkus.test.junit.QuarkusTest;
@@ -28,7 +27,7 @@ public class SSHConnectionServiceTest {
     public void setUp() {
         testCounter++;
         // 创建测试清单和主机 - 使用唯一名称
-        Inventory inventory = inventoryService.createInventory(
+        inventoryService.createInventory(
                 "测试清单" + testCounter,
                 "测试清单描述" + testCounter);
         testHost = new InventoryHost(
