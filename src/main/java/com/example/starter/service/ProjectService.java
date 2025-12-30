@@ -122,12 +122,12 @@ public class ProjectService {
     }
 
     /**
-     * 获取以"project"开头的所有项目
+     * 获取所有项目（用于资源展示）
      * 
      * @return 项目列表
      */
     public List<Project> getProjectResources() {
-        return projectRepository.findByNameStartingWith("project");
+        return projectRepository.listAll();
     }
 
     /**

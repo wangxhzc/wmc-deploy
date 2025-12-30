@@ -59,18 +59,9 @@ public class HostManagementView extends VerticalLayout implements BeforeEnterObs
 
     @PostConstruct
     public void init() {
-        // 注册 UI 到广播器
-        UIBroadcaster.register(UI.getCurrent(), "hosts");
+        // 初始化 WebSocket 连接
+        initWebSocketConnection();
 
-        // 添加页面关闭时的清理
-        UI.getCurrent().addDetachListener(e -> {
-            UIBroadcaster.unregister(UI.getCurrent(), "hosts");
-        });
-
-        // 添加自定义事件监听器
-        UI.getCurrent().getElement().addEventListener("ui-refresh", e -> {
-            refreshGrid();
-        });
         // 标题
         title = new H2("主机管理");
         title.getStyle().set("margin-bottom", "20px");
@@ -135,6 +126,33 @@ public class HostManagementView extends VerticalLayout implements BeforeEnterObs
     }
 
     /**
+     * 初始化 WebSocket 连接
+     */
+    private void initWebSocketConnection() {
+        String jsCode = "if (!window.hostsWebSocket) {" +
+                "  var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';" +
+                "  var host = window.location.host;" +
+                "  window.hostsWebSocket = new WebSocket(protocol + '//' + host + '/ws/broadcast/hosts');" +
+                "  window.hostsWebSocket.onmessage = function(event) {" +
+                "    var data = JSON.parse(event.data);" +
+                "    if (data.type === 'refresh') {" +
+                "      setTimeout(function() { window.location.reload(); }, 100);" +
+                "    }" +
+                "  };" +
+                "  window.hostsWebSocket.onclose = function() {" +
+                "    setTimeout(function() { window.hostsWebSocket = null; }, 3000);" +
+                "  };" +
+                "}";
+
+        UI.getCurrent().getElement().executeJs(jsCode);
+
+        // 添加页面关闭时的清理
+        UI.getCurrent().addDetachListener(e -> {
+            UI.getCurrent().getElement().executeJs("if (window.hostsWebSocket) { window.hostsWebSocket.close(); }");
+        });
+    }
+
+    /**
      * 创建操作按钮
      */
     private HorizontalLayout createActionButtons(InventoryHost host) {
@@ -187,13 +205,13 @@ public class HostManagementView extends VerticalLayout implements BeforeEnterObs
 
             try {
                 hostRepository.updateConnectionStatus(host.getId(), success);
+                // 广播主机列表更新
+                UIBroadcaster.broadcastRefresh("hosts");
             } catch (Exception e) {
                 // 静默处理事务异常，不影响用户体验
                 System.err.println("Failed to update connection status: " + e.getMessage());
             }
 
-            // 不再尝试更新 UI，避免会话锁定问题
-            // 用户需要手动刷新页面来查看更新后的状态
             System.out.println("Connection test completed. Success: " + success);
         }).start();
     }
@@ -318,13 +336,13 @@ public class HostManagementView extends VerticalLayout implements BeforeEnterObs
                                 hostRepository.updateConnectionStatusByName(
                                         nameField.getValue().trim(),
                                         success);
+                                // 广播主机列表更新
+                                UIBroadcaster.broadcastRefresh("hosts");
                             } catch (Exception ex) {
                                 // 静默处理事务异常，不影响用户体验
                                 System.err.println("Failed to update connection status: " + ex.getMessage());
                             }
 
-                            // 不再尝试更新 UI，避免会话锁定问题
-                            // 用户需要手动刷新页面来查看更新后的状态
                             System.out.println("Connection test completed. Success: " + success);
                         }).start();
                     } catch (Exception ex) {

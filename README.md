@@ -1,3 +1,18 @@
+# 编译项目
+./mvnw clean compile
+
+# 打包项目（跳过测试）
+./mvnw package -DskipTests
+
+# 开发模式
+./mvnw quarkus:dev
+
+# 生产模式打包
+./mvnw clean package -Pproduction
+
+# 启动服务
+java -jar target/quarkus-app/quarkus-run.jar
+
 # Vaadin Flow 和 Quarkus 项目基础模板
 
 base-starter-flow-quarkus-24

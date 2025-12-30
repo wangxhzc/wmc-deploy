@@ -24,6 +24,8 @@ import com.vaadin.flow.router.RouterLink;
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Inject;
 
+// 导入 ResourcePreviewView - 确保类在同一个包中可见
+
 /**
  * 主布局 - 包含顶部导航栏和左侧菜单栏
  */

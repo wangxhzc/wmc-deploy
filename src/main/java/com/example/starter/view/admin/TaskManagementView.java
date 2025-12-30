@@ -54,9 +54,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    // 自动刷新定时器
-    private Timer refreshTimer;
-
     public TaskManagementView() {
         addClassName("task-management-view");
         setSizeFull();
@@ -66,56 +63,63 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
 
     @PostConstruct
     public void init() {
-        // 标题
+        initWebSocketConnection();
+
         H2 title = new H2("任务管理");
         title.getStyle().set("margin-bottom", "20px");
         title.getStyle().set("color", "#2c3e50");
 
-        // 新建任务按钮
         Button addButton = new Button("新建任务", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         addButton.addClickListener(e -> openCreateTaskDialog());
 
-        // 标题栏
         HorizontalLayout headerLayout = new HorizontalLayout(title, addButton);
         headerLayout.setWidthFull();
         headerLayout.setJustifyContentMode(FlexComponent.JustifyContentMode.BETWEEN);
         headerLayout.setAlignItems(Alignment.CENTER);
 
-        // 配置表格
         configureGrid();
-
-        // 添加到布局
         add(headerLayout, grid);
-
-        // 加载数据
         refreshGrid();
-
-        // 启动自动刷新（每5秒刷新一次）
-        startAutoRefresh();
     }
 
-    /**
-     * 配置表格
-     */
+    private void initWebSocketConnection() {
+        String jsCode = "if (!window.tasksWebSocket) {" +
+                "  var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';" +
+                "  var host = window.location.host;" +
+                "  window.tasksWebSocket = new WebSocket(protocol + '//' + host + '/ws/broadcast/tasks');" +
+                "  window.tasksWebSocket.onmessage = function(event) {" +
+                "    var data = JSON.parse(event.data);" +
+                "    if (data.type === 'refresh') {" +
+                "      setTimeout(function() { window.location.reload(); }, 100);" +
+                "    }" +
+                "  };" +
+                "  window.tasksWebSocket.onclose = function() {" +
+                "    setTimeout(function() { window.tasksWebSocket = null; }, 3000);" +
+                "  };" +
+                "}";
+
+        UI.getCurrent().getElement().executeJs(jsCode);
+
+        UI.getCurrent().addDetachListener(e -> {
+            UI.getCurrent().getElement().executeJs("if (window.tasksWebSocket) { window.tasksWebSocket.close(); }");
+        });
+    }
+
     private void configureGrid() {
         grid.setSizeFull();
 
-        // 任务名称
         grid.addComponentColumn(task -> {
             Span nameSpan = new Span(task.getName());
             nameSpan.getStyle().set("font-weight", "bold");
             return nameSpan;
         }).setHeader("任务名称").setAutoWidth(true);
 
-        // 模板名称
         grid.addColumn(task -> task.getTemplate() != null ? task.getTemplate().getName() : "N/A")
                 .setHeader("模板").setAutoWidth(true);
 
-        // 状态
         grid.addComponentColumn(this::createStatusBadge).setHeader("状态").setAutoWidth(true);
 
-        // 创建时间
         grid.addComponentColumn(task -> {
             Span createdTime = new Span(task.getCreatedAt().format(DATE_FORMATTER));
             createdTime.getStyle().set("font-size", "12px");
@@ -123,7 +127,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
             return createdTime;
         }).setHeader("创建时间").setAutoWidth(true);
 
-        // 开始时间
         grid.addComponentColumn(task -> {
             if (task.getStartedAt() == null) {
                 return new Span("-");
@@ -133,7 +136,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
             return startedTime;
         }).setHeader("开始时间").setAutoWidth(true);
 
-        // 完成时间
         grid.addComponentColumn(task -> {
             if (task.getFinishedAt() == null) {
                 return new Span("-");
@@ -143,16 +145,11 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
             return finishedTime;
         }).setHeader("完成时间").setAutoWidth(true);
 
-        // 持续时间
         grid.addComponentColumn(this::createDurationSpan).setHeader("持续时间").setAutoWidth(true);
 
-        // 操作列
         grid.addComponentColumn(this::createActionButtons).setHeader("操作").setAutoWidth(true);
     }
 
-    /**
-     * 创建状态标签
-     */
     private Span createStatusBadge(Task task) {
         Span badge = new Span(getStatusText(task.getStatus()));
         badge.getStyle().set("padding", "4px 8px");
@@ -186,9 +183,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         return badge;
     }
 
-    /**
-     * 获取状态文本
-     */
     private String getStatusText(TaskStatus status) {
         switch (status) {
             case PENDING:
@@ -206,9 +200,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         }
     }
 
-    /**
-     * 创建持续时间标签
-     */
     private Span createDurationSpan(Task task) {
         if (task.getStartedAt() == null) {
             return new Span("-");
@@ -236,21 +227,16 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         return span;
     }
 
-    /**
-     * 创建操作按钮
-     */
     private HorizontalLayout createActionButtons(Task task) {
         HorizontalLayout actions = new HorizontalLayout();
         actions.setSpacing(true);
 
-        // 查看日志按钮
         Button logButton = new Button(VaadinIcon.FILE_TEXT.create());
         logButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
         logButton.getElement().setAttribute("title", "查看日志");
         logButton.addClickListener(e -> openLogDialog(task));
         actions.add(logButton);
 
-        // 重启按钮（只有已完成的任务可以重启）
         if (task.getStatus() == TaskStatus.SUCCESS || task.getStatus() == TaskStatus.FAILED ||
                 task.getStatus() == TaskStatus.CANCELLED) {
             Button restartButton = new Button(VaadinIcon.REFRESH.create());
@@ -264,7 +250,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
             actions.add(restartButton);
         }
 
-        // 取消按钮（只有正在运行的任务可以取消）
         if (task.getStatus() == TaskStatus.RUNNING) {
             Button cancelButton = new Button(VaadinIcon.STOP.create());
             cancelButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR,
@@ -278,7 +263,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
             actions.add(cancelButton);
         }
 
-        // 删除按钮（只有非运行中的任务可以删除）
         if (task.getStatus() != TaskStatus.RUNNING) {
             Button deleteButton = new Button(VaadinIcon.TRASH.create());
             deleteButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR,
@@ -291,63 +275,15 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         return actions;
     }
 
-    /**
-     * 刷新网格数据
-     */
     private void refreshGrid() {
         grid.setItems(taskService.getAllTasks());
     }
 
-    /**
-     * 启动自动刷新
-     */
-    private void startAutoRefresh() {
-        refreshTimer = new Timer("TaskRefreshTimer", true);
-        refreshTimer.schedule(new TimerTask() {
-            @Override
-            public void run() {
-                try {
-                    UI ui = UI.getCurrent();
-                    if (ui != null) {
-                        ui.access(() -> refreshGrid());
-                    }
-                } catch (Exception e) {
-                    // 忽略刷新过程中的异常，避免定时器线程中断
-                    System.err.println("刷新任务数据时出错: " + e.getMessage());
-                }
-            }
-        }, 5000, 5000); // 每5秒刷新一次
-    }
-
-    /**
-     * 停止自动刷新
-     */
-    private void stopAutoRefresh() {
-        if (refreshTimer != null) {
-            refreshTimer.cancel();
-            refreshTimer = null;
-        }
-    }
-
-    /**
-     * 视图销毁时停止自动刷新
-     */
-    @jakarta.annotation.PreDestroy
-    public void cleanup() {
-        stopAutoRefresh();
-    }
-
-    /**
-     * 显示通知
-     */
     private void showNotification(String message, NotificationVariant variant) {
         Notification notification = Notification.show(message, 3000, Notification.Position.TOP_CENTER);
         notification.addThemeVariants(variant);
     }
 
-    /**
-     * 打开新建任务对话框
-     */
     private void openCreateTaskDialog() {
         Dialog dialog = new Dialog();
         dialog.setWidth("600px");
@@ -411,9 +347,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         dialog.open();
     }
 
-    /**
-     * 打开日志查看对话框
-     */
     private void openLogDialog(Task task) {
         Dialog dialog = new Dialog();
         dialog.setWidth("900px");
@@ -427,13 +360,11 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         H3 title = new H3("任务日志: " + task.getName());
         title.getStyle().set("margin-top", "0");
 
-        // 任务信息
         Paragraph info = new Paragraph("模板: " + (task.getTemplate() != null ? task.getTemplate().getName() : "N/A") +
                 " | 状态: " + getStatusText(task.getStatus()));
         info.getStyle().set("color", "#6c757d");
         info.getStyle().set("font-size", "14px");
 
-        // 日志显示区域
         TextArea logArea = new TextArea();
         logArea.setSizeFull();
         logArea.setReadOnly(true);
@@ -441,11 +372,9 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         logArea.getStyle().set("font-size", "12px");
         logArea.getStyle().set("background-color", "#f5f5f5");
 
-        // 加载日志
         loadLogContent(task, logArea);
 
-        // 如果任务正在运行，启用自动刷新日志
-        final Timer[] logRefreshTimer = { null };
+        final Timer[] logRefreshTimer = new Timer[] { null };
         if (task.getStatus() == TaskStatus.RUNNING) {
             logRefreshTimer[0] = new Timer("LogRefreshTimer", true);
             logRefreshTimer[0].schedule(new TimerTask() {
@@ -460,25 +389,21 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
                                     if (currentTask != null && currentTask.getStatus() == TaskStatus.RUNNING) {
                                         loadLogContent(currentTask, logArea);
                                     } else {
-                                        // 任务已完成，停止刷新
                                         this.cancel();
                                         loadLogContent(taskService.getTaskById(task.getId()), logArea);
                                     }
                                 } else {
-                                    // 对话框已关闭，停止刷新
                                     this.cancel();
                                 }
                             });
                         }
                     } catch (Exception e) {
-                        // 忽略刷新过程中的异常，避免定时器线程中断
                         System.err.println("刷新日志时出错: " + e.getMessage());
                     }
                 }
-            }, 2000, 2000); // 每2秒刷新一次
+            }, 2000, 2000);
         }
 
-        // 关闭按钮
         Button closeButton = new Button("关闭", e -> {
             if (logRefreshTimer[0] != null) {
                 logRefreshTimer[0].cancel();
@@ -488,7 +413,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         closeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         closeButton.getElement().setAttribute("type", "button");
 
-        // 刷新按钮
         Button refreshButton = new Button("刷新", e -> {
             Task currentTask = taskService.getTaskById(task.getId());
             if (currentTask != null) {
@@ -508,9 +432,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         dialog.open();
     }
 
-    /**
-     * 加载日志内容
-     */
     private void loadLogContent(Task task, TextArea logArea) {
         try {
             String log = taskService.getTaskLog(task.getId());
@@ -520,9 +441,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         }
     }
 
-    /**
-     * 打开删除确认对话框
-     */
     private void openDeleteConfirmationDialog(Task task) {
         Dialog dialog = new Dialog();
         dialog.setWidth("500px");
@@ -544,7 +462,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         warning.getStyle().set("font-size", "14px");
         warning.getStyle().set("margin-bottom", "20px");
 
-        // 确认按钮
         Button confirmButton = new Button("确认删除", e -> {
             try {
                 taskService.deleteTask(task.getId());
@@ -558,7 +475,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
         confirmButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_ERROR);
         confirmButton.getElement().setAttribute("type", "button");
 
-        // 取消按钮
         Button cancelButton = new Button("取消", e -> dialog.close());
         cancelButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         cancelButton.getElement().setAttribute("type", "button");
@@ -575,7 +491,6 @@ public class TaskManagementView extends VerticalLayout implements BeforeEnterObs
 
     @Override
     public void beforeEnter(BeforeEnterEvent event) {
-        // 检查用户是否已登录
         if (userService == null || !userService.isLoggedIn()) {
             if (userService != null && userService.isSessionExpired()) {
                 UI.getCurrent().getPage().setLocation("/login?expired=true");

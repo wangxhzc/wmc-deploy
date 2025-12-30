@@ -4,9 +4,15 @@ import com.example.starter.entity.*;
 import com.example.starter.exception.ResourceNotFoundException;
 import com.example.starter.repository.TaskRepository;
 import com.example.starter.repository.TemplateRepository;
+import com.example.starter.util.UIBroadcaster;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.transaction.Transactional.TxType;
+import org.eclipse.microprofile.config.Config;
+import org.eclipse.microprofile.config.ConfigProvider;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +27,6 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * 任务服务 - 处理任务的创建和后台执行
@@ -44,11 +48,8 @@ public class TaskService {
     @ConfigProperty(name = "python.path", defaultValue = "/usr/bin/python3")
     String pythonPath;
 
-    @ConfigProperty(name = "task.temp.directory", defaultValue = "/tmp/wmc-deploy-tasks")
+    @ConfigProperty(name = "task.temp.directory", defaultValue = "tmp/wmc-deploy-tasks")
     String taskTempDirectory;
-
-    // 线程池用于并发执行任务
-    private final ExecutorService executorService = Executors.newFixedThreadPool(5);
 
     // 存储正在运行的任务进程，用于取消任务
     private final Map<Long, Process> runningProcesses = new ConcurrentHashMap<>();
@@ -69,11 +70,8 @@ public class TaskService {
         taskRepository.persist(task);
         taskRepository.flush(); // 确保获取到ID
 
-        // 初始化模板的关联数据
-        templateRepository.getEntityManager().refresh(template);
-
-        // 异步执行任务
-        executorService.submit(() -> executeTask(task));
+        // 异步执行任务（使用Quarkus的异步执行器）
+        Infrastructure.getDefaultWorkerPool().submit(() -> executeTask(task));
 
         return task;
     }
@@ -95,8 +93,8 @@ public class TaskService {
         task.setErrorMessage(null);
         taskRepository.persist(task);
 
-        // 异步执行任务
-        executorService.submit(() -> executeTask(task));
+        // 异步执行任务（使用Quarkus的异步执行器）
+        Infrastructure.getDefaultWorkerPool().submit(() -> executeTask(task));
 
         return task;
     }
@@ -170,33 +168,51 @@ public class TaskService {
 
     /**
      * 执行任务（在独立线程中运行）
+     * 使用@ActivateRequestContext确保在异步线程中有CDI请求上下文
      */
-    private void executeTask(Task task) {
+    @ActivateRequestContext
+    public void executeTask(Task task) {
+        // 重新加载Task对象以获取最新状态（因为传入的可能是detached对象）
+        Long originalTaskId = task.getId();
+        task = taskRepository.findById(originalTaskId);
+        if (task == null) {
+            logger.error("任务不存在，ID: {}", originalTaskId);
+            return;
+        }
+
         ProcessBuilder processBuilder = null;
         Process process = null;
         File logFile = null;
+        boolean isNewExecution = false;
+        String tempDirPath = null;
+        String playbookPath = null;
+        String inventoryPath = null;
 
         try {
-            // 更新任务状态为运行中
-            task.setStatus(Task.TaskStatus.RUNNING);
-            task.setStartedAt(LocalDateTime.now());
-            taskRepository.persist(task);
+            // 如果是重启任务且存在临时目录，使用现有目录
+            if (task.getTempDirectory() != null && !task.getTempDirectory().isEmpty()) {
+                tempDirPath = task.getTempDirectory();
+                // 使用现有日志文件（追加模式）
+                logFile = new File(tempDirPath, "execution.log");
+                // 重新生成playbook和inventory文件
+                playbookPath = generatePlaybookFile(task.getTemplate().getProject(), tempDirPath);
+                inventoryPath = generateInventoryFile(task.getTemplate().getInventory(), tempDirPath);
+                logger.info("重用现有临时目录: {}", tempDirPath);
+            } else {
+                // 创建临时目录
+                tempDirPath = createTaskTempDirectory(task.getId());
+                // 生成playbook文件
+                playbookPath = generatePlaybookFile(task.getTemplate().getProject(), tempDirPath);
+                // 生成inventory文件（YAML格式）
+                inventoryPath = generateInventoryFile(task.getTemplate().getInventory(), tempDirPath);
+                // 创建日志文件
+                logFile = new File(tempDirPath, "execution.log");
+                isNewExecution = true;
+                logger.info("创建新的临时目录: {}", tempDirPath);
+            }
 
-            // 创建临时目录
-            String tempDirPath = createTaskTempDirectory(task.getId());
-            task.setTempDirectory(tempDirPath);
-            taskRepository.persist(task);
-
-            // 生成playbook文件
-            String playbookPath = generatePlaybookFile(task.getTemplate().getProject(), tempDirPath);
-
-            // 生成inventory文件（YAML格式）
-            String inventoryPath = generateInventoryFile(task.getTemplate().getInventory(), tempDirPath);
-
-            // 创建日志文件
-            logFile = new File(tempDirPath, "execution.log");
-            task.setLogFilePath(logFile.getAbsolutePath());
-            taskRepository.persist(task);
+            // 关键节点：更新任务状态为运行中
+            updateTaskStatusToRunning(task.getId(), tempDirPath, logFile.getAbsolutePath(), isNewExecution);
 
             // 构建ansible-playbook命令
             processBuilder = new ProcessBuilder(
@@ -205,18 +221,33 @@ public class TaskService {
                     playbookPath,
                     "-v");
 
+            // 设置工作目录
             processBuilder.directory(new File(tempDirPath));
             processBuilder.redirectErrorStream(true);
+
+            // 添加环境变量：从配置文件读取所有 ansible.env. 开头的配置
+            Map<String, String> environment = processBuilder.environment();
+            Config config = ConfigProvider.getConfig();
+            for (String propertyName : config.getPropertyNames()) {
+                if (propertyName.startsWith("ansible.env.")) {
+                    // 提取环境变量名（去掉 ansible.env. 前缀）
+                    String envVarName = propertyName.substring("ansible.env.".length());
+                    String envVarValue = config.getValue(propertyName, String.class);
+                    environment.put(envVarName, envVarValue);
+                    logger.debug("设置环境变量: {}={}", envVarName, envVarValue);
+                }
+            }
 
             // 启动进程
             process = processBuilder.start();
             runningProcesses.put(task.getId(), process);
 
-            // 读取进程输出并写入日志文件
+            // 读取进程输出并写入日志文件（追加模式）
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
                     BufferedWriter writer = new BufferedWriter(
-                            new OutputStreamWriter(new FileOutputStream(logFile), StandardCharsets.UTF_8))) {
+                            new OutputStreamWriter(new FileOutputStream(logFile, !isNewExecution),
+                                    StandardCharsets.UTF_8))) {
 
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -229,27 +260,17 @@ public class TaskService {
             // 等待进程完成
             int exitCode = process.waitFor();
 
-            // 更新任务状态
-            task.setFinishedAt(LocalDateTime.now());
-            if (exitCode == 0) {
-                task.setStatus(Task.TaskStatus.SUCCESS);
-            } else {
-                task.setStatus(Task.TaskStatus.FAILED);
-                task.setErrorMessage("执行失败，退出码: " + exitCode);
-            }
-            taskRepository.persist(task);
+            // 关键节点：更新任务状态为完成或失败
+            updateTaskStatusAfterExecution(task.getId(), exitCode, null);
 
             logger.info("任务执行完成: {} (ID: {}), 状态: {}, 退出码: {}",
-                    task.getName(), task.getId(), task.getStatus(), exitCode);
-
+                    task.getName(), task.getId(),
+                    exitCode == 0 ? Task.TaskStatus.SUCCESS : Task.TaskStatus.FAILED, exitCode);
         } catch (Exception e) {
             logger.error("任务执行出错: " + task.getName() + " (ID: " + task.getId() + ")", e);
 
-            // 更新任务状态为失败
-            task.setStatus(Task.TaskStatus.FAILED);
-            task.setFinishedAt(LocalDateTime.now());
-            task.setErrorMessage(e.getMessage());
-            taskRepository.persist(task);
+            // 更新任务状态为失败（在小事务中）
+            updateTaskStatusAfterExecution(task.getId(), -1, e.getMessage());
 
         } finally {
             // 清理
@@ -257,6 +278,45 @@ public class TaskService {
                 runningProcesses.remove(task.getId());
                 process.destroy();
             }
+        }
+    }
+
+    /**
+     * 关键节点：更新任务状态为运行中（同时更新临时目录和日志路径）
+     */
+    @Transactional(TxType.REQUIRES_NEW)
+    public void updateTaskStatusToRunning(Long taskId, String tempDirPath, String logFilePath, boolean isNewExecution) {
+        Task task = taskRepository.findById(taskId);
+        if (task != null) {
+            task.setStatus(Task.TaskStatus.RUNNING);
+            task.setStartedAt(LocalDateTime.now());
+            task.setTempDirectory(tempDirPath);
+            task.setLogFilePath(logFilePath);
+            taskRepository.persist(task);
+            // 广播到任务管理和资源预览页面
+            UIBroadcaster.broadcastRefresh("tasks");
+            UIBroadcaster.broadcastRefresh("dashboard");
+        }
+    }
+
+    /**
+     * 关键节点：更新任务状态为完成或失败
+     */
+    @Transactional(TxType.REQUIRES_NEW)
+    public void updateTaskStatusAfterExecution(Long taskId, int exitCode, String errorMessage) {
+        Task task = taskRepository.findById(taskId);
+        if (task != null) {
+            task.setFinishedAt(LocalDateTime.now());
+            if (exitCode == 0) {
+                task.setStatus(Task.TaskStatus.SUCCESS);
+            } else {
+                task.setStatus(Task.TaskStatus.FAILED);
+                task.setErrorMessage(errorMessage != null ? errorMessage : "执行失败，退出码: " + exitCode);
+            }
+            taskRepository.persist(task);
+            // 广播到任务管理和资源预览页面
+            UIBroadcaster.broadcastRefresh("tasks");
+            UIBroadcaster.broadcastRefresh("dashboard");
         }
     }
 
@@ -324,6 +384,18 @@ public class TaskService {
                     InventoryHost host = groupHost.getHost();
                     yaml.append("    ").append(host.getName()).append(":\n");
 
+                    // 添加SSH认证信息
+                    if (host.getUsername() != null && !host.getUsername().isEmpty()) {
+                        yaml.append("      ansible_user: ").append(host.getUsername()).append("\n");
+                    }
+                    if (host.getPassword() != null && !host.getPassword().isEmpty()) {
+                        yaml.append("      ansible_password: ").append(formatVariableValue(host.getPassword()))
+                                .append("\n");
+                    }
+                    if (host.getPort() != null && host.getPort() != 22) {
+                        yaml.append("      ansible_port: ").append(host.getPort()).append("\n");
+                    }
+
                     // 主机变量
                     if (!host.getVariables().isEmpty()) {
                         yaml.append("      ansible_host: ").append(host.getHost()).append("\n");
@@ -364,6 +436,19 @@ public class TaskService {
                                     .anyMatch(gh -> gh.getHost().getId().equals(host.getId())));
                     if (!inAnyGroup) {
                         yaml.append("    ").append(host.getName()).append(":\n");
+
+                        // 添加SSH认证信息
+                        if (host.getUsername() != null && !host.getUsername().isEmpty()) {
+                            yaml.append("      ansible_user: ").append(host.getUsername()).append("\n");
+                        }
+                        if (host.getPassword() != null && !host.getPassword().isEmpty()) {
+                            yaml.append("      ansible_password: ").append(formatVariableValue(host.getPassword()))
+                                    .append("\n");
+                        }
+                        if (host.getPort() != null && host.getPort() != 22) {
+                            yaml.append("      ansible_port: ").append(host.getPort()).append("\n");
+                        }
+
                         yaml.append("      ansible_host: ").append(host.getHost()).append("\n");
                         if (!host.getVariables().isEmpty()) {
                             yaml.append("      vars:\n");

@@ -36,9 +36,6 @@ public class ResourcePreviewView extends VerticalLayout implements BeforeEnterOb
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    // 自动刷新定时器
-    private java.util.Timer refreshTimer;
-
     // 组件引用
     private Div hostCard;
     private Div inventoryCard;
@@ -61,6 +58,9 @@ public class ResourcePreviewView extends VerticalLayout implements BeforeEnterOb
 
     @PostConstruct
     public void init() {
+        // 初始化 WebSocket 连接
+        initWebSocketConnection();
+
         // 页面标题
         H1 title = new H1("资源预览");
         title.getStyle().set("margin-bottom", "20px");
@@ -93,9 +93,33 @@ public class ResourcePreviewView extends VerticalLayout implements BeforeEnterOb
 
         // 首次加载数据
         refreshData();
+    }
 
-        // 启动自动刷新（每30秒刷新一次）
-        startAutoRefresh();
+    /**
+     * 初始化 WebSocket 连接
+     */
+    private void initWebSocketConnection() {
+        String jsCode = "if (!window.dashboardWebSocket) {" +
+                "  var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';" +
+                "  var host = window.location.host;" +
+                "  window.dashboardWebSocket = new WebSocket(protocol + '//' + host + '/ws/broadcast/dashboard');" +
+                "  window.dashboardWebSocket.onmessage = function(event) {" +
+                "    var data = JSON.parse(event.data);" +
+                "    if (data.type === 'refresh') {" +
+                "      window.location.reload();" +
+                "    }" +
+                "  };" +
+                "  window.dashboardWebSocket.onclose = function() {" +
+                "    setTimeout(function() { window.dashboardWebSocket = null; }, 3000);" +
+                "  };" +
+                "}";
+
+        UI.getCurrent().getElement().executeJs(jsCode);
+
+        UI.getCurrent().addDetachListener(e -> {
+            UI.getCurrent().getElement()
+                    .executeJs("if (window.dashboardWebSocket) { window.dashboardWebSocket.close(); }");
+        });
     }
 
     /**
@@ -292,16 +316,21 @@ public class ResourcePreviewView extends VerticalLayout implements BeforeEnterOb
      */
     @SuppressWarnings("unchecked")
     private void refreshData() {
-        Map<String, Object> stats = statisticsService.getAllStatistics();
+        try {
+            Map<String, Object> stats = statisticsService.getAllStatistics();
 
-        // 更新统计卡片
-        updateStatCards(stats);
+            // 更新统计卡片
+            updateStatCards(stats);
 
-        // 更新图表
-        updateCharts(stats);
+            // 更新图表
+            updateCharts(stats);
 
-        // 更新最近任务列表
-        updateRecentTasks((List<Task>) stats.get("recentTasks"));
+            // 更新最近任务列表
+            updateRecentTasks((List<Task>) stats.get("recentTasks"));
+        } catch (Exception e) {
+            System.err.println("刷新数据时出错: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -588,38 +617,6 @@ public class ResourcePreviewView extends VerticalLayout implements BeforeEnterOb
                 return "已取消";
             default:
                 return status.toString();
-        }
-    }
-
-    /**
-     * 启动自动刷新
-     */
-    private void startAutoRefresh() {
-        refreshTimer = new java.util.Timer("DashboardRefreshTimer", true);
-        refreshTimer.schedule(new java.util.TimerTask() {
-            @Override
-            public void run() {
-                try {
-                    UI ui = UI.getCurrent();
-                    if (ui != null) {
-                        ui.access(() -> refreshData());
-                    }
-                } catch (Exception e) {
-                    // 忽略刷新过程中的异常，避免定时器线程中断
-                    System.err.println("刷新数据时出错: " + e.getMessage());
-                }
-            }
-        }, 30000, 30000); // 每30秒刷新一次
-    }
-
-    /**
-     * 视图销毁时停止自动刷新
-     */
-    @jakarta.annotation.PreDestroy
-    public void cleanup() {
-        if (refreshTimer != null) {
-            refreshTimer.cancel();
-            refreshTimer = null;
         }
     }
 

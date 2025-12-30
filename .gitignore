@@ -1,4 +1,5 @@
 ﻿/target/
+/tmp/
 .idea/
 .settings
 .project

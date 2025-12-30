@@ -227,8 +227,17 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
      * 打开清单详情对话框
      */
     private void openInventoryDetailDialog(Inventory inventory) {
+        openInventoryDetailDialog(inventory, null);
+    }
+
+    /**
+     * 打开清单详情对话框（带刷新的Inventory对象）
+     */
+    private void openInventoryDetailDialog(Inventory inventory, Inventory refreshedInventory) {
         // 从数据库重新加载清单，包含所有关联数据
-        Inventory fullInventory = inventoryService.getInventoryByIdWithAssociations(inventory.getId());
+        Inventory fullInventory = refreshedInventory != null
+                ? refreshedInventory
+                : inventoryService.getInventoryByIdWithAssociations(inventory.getId());
 
         Dialog dialog = new Dialog();
         dialog.setWidth("900px");
@@ -271,17 +280,21 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
         contentLayout.setPadding(false);
 
         // 默认显示主机面板
-        contentLayout.add(createHostsPanel(fullInventory));
+        contentLayout
+                .add(createHostsPanel(fullInventory, dialog, contentLayout, tabs, hostsTab, groupsTab, variablesTab));
 
         // 选项卡切换事件
         tabs.addSelectedChangeListener(e -> {
             contentLayout.removeAll();
             if (e.getSelectedTab() == hostsTab) {
-                contentLayout.add(createHostsPanel(fullInventory));
+                contentLayout.add(createHostsPanel(fullInventory, dialog, contentLayout, tabs, hostsTab, groupsTab,
+                        variablesTab));
             } else if (e.getSelectedTab() == groupsTab) {
-                contentLayout.add(createGroupsPanel(fullInventory));
+                contentLayout.add(createGroupsPanel(fullInventory, dialog, contentLayout, tabs, hostsTab, groupsTab,
+                        variablesTab));
             } else if (e.getSelectedTab() == variablesTab) {
-                contentLayout.add(createVariablesPanel(fullInventory));
+                contentLayout.add(createVariablesPanel(fullInventory, dialog, contentLayout, tabs, hostsTab, groupsTab,
+                        variablesTab));
             }
         });
 
@@ -303,7 +316,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
     /**
      * 创建全局主机面板
      */
-    private VerticalLayout createHostsPanel(Inventory inventory) {
+    private VerticalLayout createHostsPanel(Inventory inventory, Dialog parentDialog, VerticalLayout contentLayout,
+            Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
         VerticalLayout panel = new VerticalLayout();
         panel.setSizeFull();
         panel.setPadding(false);
@@ -311,7 +325,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
         // 添加主机按钮
         Button addButton = new Button("添加主机", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        addButton.addClickListener(e -> openAddHostToInventoryDialog(inventory));
+        addButton.addClickListener(e -> openAddHostToInventoryDialog(inventory, parentDialog, contentLayout, tabs,
+                hostsTab, groupsTab, variablesTab));
         addButton.getElement().setAttribute("type", "button");
 
         // 主机列表
@@ -324,7 +339,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
             deleteButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR);
             deleteButton.addClickListener(e -> {
                 inventoryService.removeHostFromInventory(inventory.getId(), host.getId());
-                UI.getCurrent().getPage().reload();
+                // 刷新当前面板
+                refreshHostsPanel(inventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab, variablesTab);
             });
             return deleteButton;
         }).setHeader("操作").setAutoWidth(true);
@@ -338,7 +354,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
     /**
      * 创建组管理面板
      */
-    private VerticalLayout createGroupsPanel(Inventory inventory) {
+    private VerticalLayout createGroupsPanel(Inventory inventory, Dialog parentDialog, VerticalLayout contentLayout,
+            Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
         VerticalLayout panel = new VerticalLayout();
         panel.setSizeFull();
         panel.setPadding(false);
@@ -346,7 +363,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
         // 添加组按钮
         Button addButton = new Button("添加组", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        addButton.addClickListener(e -> openAddGroupDialog(inventory));
+        addButton.addClickListener(e -> openAddGroupDialog(inventory, parentDialog, contentLayout, tabs, hostsTab,
+                groupsTab, variablesTab));
         addButton.getElement().setAttribute("type", "button");
 
         // 组列表
@@ -368,7 +386,7 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
             deleteButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR);
             deleteButton.addClickListener(e -> {
                 inventoryService.removeGroupFromInventory(inventory.getId(), group);
-                UI.getCurrent().getPage().reload();
+                refreshGroupsPanel(inventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab, variablesTab);
             });
 
             actions.add(viewButton, deleteButton);
@@ -385,7 +403,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
     /**
      * 创建全局变量面板
      */
-    private VerticalLayout createVariablesPanel(Inventory inventory) {
+    private VerticalLayout createVariablesPanel(Inventory inventory, Dialog parentDialog, VerticalLayout contentLayout,
+            Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
         VerticalLayout panel = new VerticalLayout();
         panel.setSizeFull();
         panel.setPadding(false);
@@ -393,7 +412,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
         // 添加变量按钮
         Button addButton = new Button("添加变量", VaadinIcon.PLUS.create());
         addButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        addButton.addClickListener(e -> openAddVariableDialog(inventory));
+        addButton.addClickListener(e -> openAddVariableDialog(inventory, parentDialog, contentLayout, tabs, hostsTab,
+                groupsTab, variablesTab));
         addButton.getElement().setAttribute("type", "button");
 
         // 变量列表
@@ -413,7 +433,7 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
             deleteButton.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR);
             deleteButton.addClickListener(e -> {
                 inventoryService.removeVariableFromInventory(inventory.getId(), variable);
-                UI.getCurrent().getPage().reload();
+                refreshVariablesPanel(inventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab, variablesTab);
             });
             return deleteButton;
         }).setHeader("操作").setAutoWidth(true);
@@ -427,7 +447,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
     /**
      * 打开添加主机到清单对话框
      */
-    private void openAddHostToInventoryDialog(Inventory inventory) {
+    private void openAddHostToInventoryDialog(Inventory inventory, Dialog parentDialog,
+            VerticalLayout contentLayout, Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
         Dialog dialog = new Dialog();
         dialog.setWidth("700px");
 
@@ -467,8 +488,9 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
                 try {
                     inventoryService.addHostToInventory(selectedHost.getId(), inventory.getId());
                     showNotification("主机添加成功", NotificationVariant.LUMO_SUCCESS);
-                    UI.getCurrent().getPage().reload();
                     dialog.close();
+                    // 刷新当前面板，不重新打开对话框
+                    refreshHostsPanel(inventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab, variablesTab);
                 } catch (IllegalArgumentException ex) {
                     showNotification(ex.getMessage(), NotificationVariant.LUMO_ERROR);
                 }
@@ -496,7 +518,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
     /**
      * 打开添加组对话框
      */
-    private void openAddGroupDialog(Inventory inventory) {
+    private void openAddGroupDialog(Inventory inventory, Dialog parentDialog,
+            VerticalLayout contentLayout, Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
         Dialog dialog = new Dialog();
         dialog.setWidth("500px");
 
@@ -514,8 +537,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
                 inventoryService.addGroupToInventory(inventory.getId(), nameField.getValue().trim(),
                         descriptionField.getValue());
                 showNotification("组添加成功", NotificationVariant.LUMO_SUCCESS);
-                UI.getCurrent().getPage().reload();
                 dialog.close();
+                refreshGroupsPanel(inventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab, variablesTab);
             } catch (IllegalArgumentException ex) {
                 showNotification(ex.getMessage(), NotificationVariant.LUMO_ERROR);
             }
@@ -539,7 +562,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
     /**
      * 打开添加变量对话框
      */
-    private void openAddVariableDialog(Inventory inventory) {
+    private void openAddVariableDialog(Inventory inventory, Dialog parentDialog,
+            VerticalLayout contentLayout, Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
         Dialog dialog = new Dialog();
         dialog.setWidth("500px");
 
@@ -558,8 +582,8 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
                 inventoryService.addVariableToInventory(inventory.getId(), nameField.getValue().trim(),
                         valueField.getValue());
                 showNotification("变量添加成功", NotificationVariant.LUMO_SUCCESS);
-                UI.getCurrent().getPage().reload();
                 dialog.close();
+                refreshVariablesPanel(inventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab, variablesTab);
             } catch (IllegalArgumentException ex) {
                 showNotification(ex.getMessage(), NotificationVariant.LUMO_ERROR);
             }
@@ -809,6 +833,45 @@ public class InventoryManagementView extends VerticalLayout implements BeforeEnt
     private void refreshGrid() {
         List<Inventory> inventories = inventoryService.getAllInventories();
         inventoryGrid.setItems(inventories);
+    }
+
+    /**
+     * 刷新主机面板
+     */
+    private void refreshHostsPanel(Inventory inventory, Dialog parentDialog,
+            VerticalLayout contentLayout, Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
+        // 从数据库重新加载清单
+        Inventory refreshedInventory = inventoryService.getInventoryByIdWithAssociations(inventory.getId());
+        // 移除当前面板并重新创建
+        contentLayout.removeAll();
+        contentLayout.add(createHostsPanel(refreshedInventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab,
+                variablesTab));
+    }
+
+    /**
+     * 刷新组面板
+     */
+    private void refreshGroupsPanel(Inventory inventory, Dialog parentDialog,
+            VerticalLayout contentLayout, Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
+        // 从数据库重新加载清单
+        Inventory refreshedInventory = inventoryService.getInventoryByIdWithAssociations(inventory.getId());
+        // 移除当前面板并重新创建
+        contentLayout.removeAll();
+        contentLayout.add(createGroupsPanel(refreshedInventory, parentDialog, contentLayout, tabs, hostsTab, groupsTab,
+                variablesTab));
+    }
+
+    /**
+     * 刷新变量面板
+     */
+    private void refreshVariablesPanel(Inventory inventory, Dialog parentDialog,
+            VerticalLayout contentLayout, Tabs tabs, Tab hostsTab, Tab groupsTab, Tab variablesTab) {
+        // 从数据库重新加载清单
+        Inventory refreshedInventory = inventoryService.getInventoryByIdWithAssociations(inventory.getId());
+        // 移除当前面板并重新创建
+        contentLayout.removeAll();
+        contentLayout.add(createVariablesPanel(refreshedInventory, parentDialog, contentLayout, tabs, hostsTab,
+                groupsTab, variablesTab));
     }
 
     /**
