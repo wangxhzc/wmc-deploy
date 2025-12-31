@@ -110,42 +110,6 @@ com.example.starter/
         └── ProjectManagementView.java  # 项目管理视图
 ```
 
-## 单元测试
-
-测试文件位于 `src/test/java/com/example/starter/` 目录下：
-
-### 测试文件列表
-```
-src/test/java/com/example/starter/
-├── repository/
-│   ├── InventoryHostRepositoryTest.java   (12个测试用例)
-│   ├── InventoryRepositoryTest.java       (8个测试用例)
-│   └── ProjectRepositoryTest.java        (11个测试用例)
-└── service/
-    ├── GreetServiceTest.java              (6个测试用例)
-    ├── ProjectServiceTest.java             (21个测试用例)
-    └── inventory/
-        └── InventoryServiceTest.java     (19个测试用例)
-```
-
-### 测试覆盖情况
-- **总测试文件**：6个
-- **总测试用例**：77个
-- **测试状态**：全部通过 ✅
-
-### 已测试模块
-- ✅ ProjectService - 项目管理业务逻辑
-- ✅ InventoryService - 清单管理业务逻辑
-- ✅ GreetService - 问候服务
-- ✅ ProjectRepository - 项目数据访问
-- ✅ InventoryRepository - 清单数据访问
-- ✅ InventoryHostRepository - 主机数据访问
-
-### 缺失测试（建议补充）
-- ⏳ AuthServiceTest - 认证服务测试
-- ⏳ UserServiceTest - 用户服务测试
-- ⏳ SSHConnectionServiceTest - SSH连接服务测试
-
 ## 主要功能
 
 ### 用户认证和会话管理
@@ -300,7 +264,6 @@ private static final long SESSION_TIMEOUT_MINUTES = 30;  // 修改这个值调�
 - Hibernate Panache ORM
 - SQLite JDBC
 - JSch (用于SSH连接)
-- JUnit 5 (测试框架)
 
 ### 新增依赖
 ```xml
@@ -322,12 +285,6 @@ mvn quarkus:dev
 ```bash
 mvn test
 ```
-
-当前测试结果：
-- Tests run: 77
-- Failures: 0
-- Errors: 0
-- Skipped: 0
 
 ## 生产环境部署
 
@@ -361,10 +318,6 @@ java -jar target/quarkus-app/quarkus-run.jar
 ## 代码规范
 
 ### 测试规范
-- 使用 `@DisplayName` 提供清晰的测试名称
-- 使用 `@Order` 控制测试执行顺序
-- 使用 `@BeforeEach` 清理测试数据
-- 使用 `@Transactional` 确保数据一致性
 
 ### 事务管理
 - Service 层方法使用 `@Transactional` 注解
